@@ -8,7 +8,9 @@ import AdminPage from './pages/AdminPage';
 import './index.css';
 
 function ProtectedRoute({ children, requiredRole }) {
-  const { user, loading } = useAuth();
+  const auth = useAuth();
+  const user = auth.user;
+  const loading = auth.loading;
   if (loading) return <div className="loading"><div className="spinner" />Loading...</div>;
   if (!user) return <Navigate to="/" replace />;
   if (requiredRole && user.role !== requiredRole) return <Navigate to="/" replace />;
