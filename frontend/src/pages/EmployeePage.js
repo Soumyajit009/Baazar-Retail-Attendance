@@ -11,26 +11,20 @@ const initials = (name) => name ? name.split(' ').map(w => w[0]).join('').toUppe
 export default function EmployeePage() {
   const { user } = useAuth();
   const [todayRec, setTodayRec] = useState(null);
-  const [monthly, setMonthly] = useState({ present: 0, absent: 0, total: 0, percentage: 0 });
-  const [selected, setSelected] = useState('');
+  const [summary, setSummary] = useState({ present: 0, absent: 0, total: 0, percentage: 0 });
+  const [period, setPeriod] = useState('month');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const now = new Date();
-  const outsideWindow = now.getHours() > 10;
-
   useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchSummary(); }, [period]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [todayRes, monthlyRes] = await Promise.all([
-        api.get('/attendance/today/me'),
-        api.get('/attendance/monthly/me'),
-      ]);
-      setTodayRec(todayRes.data);
-      setMonthly(monthlyRes.data);
+      const res = await api.get('/attendance/today/me');
+      setTodayRec(res.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -38,34 +32,58 @@ export default function EmployeePage() {
     }
   };
 
-  const handleSubmit = async () => {
-    if (!selected) { setError('Please select Present or Absent'); return; }
-    setError(''); setSubmitting(true);
-
+  const fetchSummary = async () => {
     try {
-      let latitude = null;
-      let longitude = null;
+      const res = await api.get(`/attendance/summary/me?period=${period}`);
+      setSummary(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
-      if (selected === 'Present') {
-        try {
-          const position = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: true,
-              timeout: 10000,
-            });
-          });
-          latitude = position.coords.latitude;
-          longitude = position.coords.longitude;
-        } catch (geoErr) {
-          setError('Location access denied. Please enable GPS to mark Present.');
-          setSubmitting(false);
-          return;
-        }
-      }
-
-      const res = await api.post('/attendance/submit', { status: selected, latitude, longitude });
+  const handleCheckIn = async () => {
+    setError(''); setSubmitting(true);
+    try {
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+        });
+      });
+      const { latitude, longitude } = position.coords;
+      const res = await api.post('/attendance/checkin', { latitude, longitude });
       setTodayRec(res.data);
-      await fetchData();
+      await fetchSummary();
+    } catch (err) {
+      if (err.code === 1 || err.code === 2 || err.code === 3) {
+        setError('Location access denied. Please enable GPS to Check In.');
+      } else {
+        setError(err.response?.data?.error || 'Check In failed');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCheckOut = async () => {
+    setError(''); setSubmitting(true);
+    try {
+      const res = await api.post('/attendance/checkout');
+      setTodayRec(res.data);
+      await fetchSummary();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Check Out failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAbsent = async () => {
+    setError(''); setSubmitting(true);
+    try {
+      const res = await api.post('/attendance/absent');
+      setTodayRec(res.data);
+      await fetchSummary();
     } catch (err) {
       setError(err.response?.data?.error || 'Submission failed');
     } finally {
@@ -73,7 +91,7 @@ export default function EmployeePage() {
     }
   };
 
-  const pct = monthly.percentage || 0;
+  const pct = summary.percentage || 0;
 
   return (
     <div className="app">
@@ -93,54 +111,65 @@ export default function EmployeePage() {
           {loading ? (
             <div className="loading"><div className="spinner" />Loading...</div>
           ) : todayRec ? (
-            <div className="success-banner">
-              <div className="success-icon">✓</div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 15 }}>Attendance Already Submitted Today</div>
-                <div style={{ fontSize: 13, color: '#374151', marginTop: 2 }}>
-                  Status: <strong>{todayRec.status}</strong> at {fmtTime(todayRec.time)}
-                </div>
+            todayRec.status === 'Absent' ? (
+              <div className="error-banner">
+                You marked <strong>Absent</strong> today.
               </div>
-            </div>
+            ) : (
+              <div>
+                <div className="success-banner">
+                  <div className="success-icon">✓</div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 15 }}>Checked In at {fmtTime(todayRec.checkin_time || todayRec.time)}</div>
+                    {todayRec.checkout_time && (
+                      <div style={{ fontSize: 13, color: '#374151', marginTop: 2 }}>
+                        Checked Out at {fmtTime(todayRec.checkout_time)}
+                        {todayRec.auto_checkout && ' (auto)'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {!todayRec.checkout_time && (
+                  <>
+                    {error && <div className="error-banner">{error}</div>}
+                    <button className="btn-primary" onClick={handleCheckOut} disabled={submitting} style={{ marginTop: 8, background: 'var(--red)' }}>
+                      {submitting ? 'Processing...' : '🚪 Check Out'}
+                    </button>
+                  </>
+                )}
+              </div>
+            )
           ) : (
             <>
-              {outsideWindow && (
-                <div className="warning-banner">⚠️ Attendance window (9:00 AM – 10:00 AM) has closed for today.</div>
-              )}
-              <div className="info-banner">🕐 Attendance window: 9:00 AM – 10:00 AM</div>
+              <div className="info-banner">🕐 Attendance window will close at 10:30 AM</div>
               {error && <div className="error-banner">{error}</div>}
               <div className="radio-group">
-                <div
-                  className={`radio-option ${selected === 'Present' ? 'selected-present' : ''}`}
-                  onClick={() => setSelected('Present')}
-                >
-                  <div className="radio-circle">{selected === 'Present' && <div className="radio-dot" />}</div>
-                  <div className="radio-label">✅ Present</div>
-                </div>
-                <div
-                  className={`radio-option ${selected === 'Absent' ? 'selected-absent' : ''}`}
-                  onClick={() => setSelected('Absent')}
-                >
-                  <div className="radio-circle">{selected === 'Absent' && <div className="radio-dot" />}</div>
-                  <div className="radio-label">❌ Absent</div>
-                </div>
+                <button className="btn-primary" onClick={handleCheckIn} disabled={submitting} style={{ background: 'var(--green)' }}>
+                  {submitting ? 'Processing...' : '✅ Check In'}
+                </button>
+                <button className="btn-primary" onClick={handleAbsent} disabled={submitting} style={{ background: 'var(--red)' }}>
+                  {submitting ? 'Processing...' : '❌ Absent'}
+                </button>
               </div>
-              <button className="btn-primary" onClick={handleSubmit} disabled={submitting} style={{ marginTop: 8 }}>
-                {submitting ? 'Submitting...' : 'Submit Attendance'}
-              </button>
             </>
           )}
         </div>
 
         <div className="card" style={{ marginTop: 16 }}>
-          <div className="card-title">📊 Monthly Summary</div>
-          <div className="monthly-grid">
+          <div className="section-header" style={{ marginBottom: 0 }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>📊 Attendance Summary</div>
+            <div className="tabs" style={{ marginBottom: 0 }}>
+              <div className={`tab ${period === 'week' ? 'active' : ''}`} onClick={() => setPeriod('week')}>This Week</div>
+              <div className={`tab ${period === 'month' ? 'active' : ''}`} onClick={() => setPeriod('month')}>This Month</div>
+            </div>
+          </div>
+          <div className="monthly-grid" style={{ marginTop: 16 }}>
             <div className="monthly-item">
-              <div className="monthly-num num-green">{monthly.present}</div>
+              <div className="monthly-num num-green">{summary.present}</div>
               <div className="monthly-lbl">Present Days</div>
             </div>
             <div className="monthly-item">
-              <div className="monthly-num num-red">{monthly.absent}</div>
+              <div className="monthly-num num-red">{summary.absent}</div>
               <div className="monthly-lbl">Absent Days</div>
             </div>
             <div className="monthly-item">
@@ -151,7 +180,7 @@ export default function EmployeePage() {
           <div className="progress-bar-wrap" style={{ marginTop: 16 }}>
             <div className="progress-bar" style={{ width: `${pct}%`, background: pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--red)' }} />
           </div>
-          <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 6, textAlign: 'right' }}>{pct}% attendance this month</div>
+          <div style={{ fontSize: 12, color: 'var(--gray)', marginTop: 6, textAlign: 'right' }}>{pct}% attendance {period === 'week' ? 'this week' : 'this month'}</div>
         </div>
       </div>
     </div>

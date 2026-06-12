@@ -8,7 +8,7 @@ const { authMiddleware, adminOnly } = require('../middleware/auth');
 router.get('/', authMiddleware, adminOnly, async (req, res) => {
   const { data, error } = await supabase
     .from('employees')
-    .select('id, employee_id, name, department, created_at')
+    .select('id, employee_id, name, department, joining_date, created_at')
     .order('created_at', { ascending: true });
 
   if (error) return res.status(500).json({ error: error.message });
@@ -17,7 +17,7 @@ router.get('/', authMiddleware, adminOnly, async (req, res) => {
 
 // Add employee (admin only)
 router.post('/', authMiddleware, adminOnly, async (req, res) => {
-  const { employeeId, name, department, password } = req.body;
+  const { employeeId, name, department, password, joiningDate } = req.body;
 
   if (!employeeId || !name || !department || !password) {
     return res.status(400).json({ error: 'All fields are required' });
@@ -38,8 +38,8 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
 
   const { data, error } = await supabase
     .from('employees')
-    .insert([{ employee_id: employeeId, name, department, password_hash }])
-    .select('id, employee_id, name, department')
+    .insert([{ employee_id: employeeId, name, department, password_hash, joining_date: joiningDate || null }])
+    .select('id, employee_id, name, department, joining_date')
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
@@ -48,14 +48,14 @@ router.post('/', authMiddleware, adminOnly, async (req, res) => {
 
 // Update employee (admin only)
 router.put('/:id', authMiddleware, adminOnly, async (req, res) => {
-  const { name, department } = req.body;
+  const { name, department, joiningDate } = req.body;
   const { id } = req.params;
 
   const { data, error } = await supabase
     .from('employees')
-    .update({ name, department })
+    .update({ name, department, joining_date: joiningDate || null })
     .eq('id', id)
-    .select('id, employee_id, name, department')
+    .select('id, employee_id, name, department, joining_date')
     .single();
 
   if (error) return res.status(500).json({ error: error.message });

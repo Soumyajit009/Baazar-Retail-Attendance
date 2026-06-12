@@ -70,7 +70,7 @@ export default function AdminPage() {
         await api.post('/employees', form);
         flash('Employee added successfully');
       } else {
-        await api.put(`/employees/${form.id}`, { name: form.name, department: form.department });
+        await api.put(`/employees/${form.id}`, { name: form.name, department: form.department, joiningDate: form.joiningDate });
         flash('Employee updated');
       }
       setModal(null); setForm({}); setShowPassword(false);
@@ -157,7 +157,7 @@ export default function AdminPage() {
               ) : (
                 <div className="table-wrap">
                   <table className="data-table">
-                    <thead><tr>{['Employee ID', 'Name', 'Department', 'Status', 'Time'].map(c => <th key={c}>{c}</th>)}</tr></thead>
+                    <thead><tr>{['Employee ID', 'Name', 'Department', 'Status', 'Check In', 'Check Out'].map(c => <th key={c}>{c}</th>)}</tr></thead>
                     <tbody>
                       {todayAtt.map((a, i) => (
                         <tr key={i}>
@@ -165,7 +165,8 @@ export default function AdminPage() {
                           <td><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div className="emp-initials">{initials(a.employee_name)}</div>{a.employee_name}</div></td>
                           <td><span className="badge badge-blue">{a.department}</span></td>
                           <td><span className={`badge ${a.status === 'Present' ? 'badge-green' : 'badge-red'}`}>{a.status}</span></td>
-                          <td>{fmtTime(a.time)}</td>
+                          <td>{fmtTime(a.checkin_time)}</td>
+                          <td>{fmtTime(a.checkout_time)}{a.auto_checkout && a.checkout_time ? ' 🔁' : ''}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -223,7 +224,7 @@ export default function AdminPage() {
                 <div className="empty-state"><div className="empty-state-icon">🔍</div><div>No records found</div></div>
               ) : (
                 <table className="data-table">
-                  <thead><tr>{['Employee ID', 'Name', 'Department', 'Status', 'Date', 'Time'].map(c => <th key={c}>{c}</th>)}</tr></thead>
+                  <thead><tr>{['Employee ID', 'Name', 'Department', 'Status', 'Check In', 'Check Out', 'Date'].map(c => <th key={c}>{c}</th>)}</tr></thead>
                   <tbody>
                     {attendance.map((a, i) => (
                       <tr key={i}>
@@ -231,8 +232,9 @@ export default function AdminPage() {
                         <td>{a.employee_name}</td>
                         <td><span className="badge badge-blue">{a.department}</span></td>
                         <td><span className={`badge ${a.status === 'Present' ? 'badge-green' : 'badge-red'}`}>{a.status}</span></td>
+                        <td>{fmtTime(a.checkin_time)}</td>
+                        <td>{fmtTime(a.checkout_time)}{a.auto_checkout && a.checkout_time ? ' 🔁' : ''}</td>
                         <td>{fmtDate(a.date)}</td>
-                        <td>{fmtTime(a.time)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -258,6 +260,7 @@ export default function AdminPage() {
                       <td><span className="badge badge-blue">{e.employee_id}</span></td>
                       <td><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div className="emp-initials">{initials(e.name)}</div>{e.name}</div></td>
                       <td>{e.department}</td>
+                      <td>{e.joining_date ? fmtDate(e.joining_date) : '—'}</td>
                       <td>
                         <div className="action-btns">
                           <button className="btn-sm btn-outline" onClick={() => { setForm({ ...e }); setModal('editEmp'); }}>Edit</button>
@@ -348,6 +351,17 @@ export default function AdminPage() {
                   </div>
                 </div>
               )}
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Joining Date</label>
+                <input
+                  className="form-input"
+                  type="date"
+                  value={form.joining_date || form.joiningDate || ''}
+                  onChange={e => setForm({ ...form, joiningDate: e.target.value })}
+                />
+              </div>
             </div>
             <div className="modal-footer">
               <button className="btn-sm btn-outline" onClick={() => { setModal(null); setForm({}); setShowPassword(false); }}>Cancel</button>
